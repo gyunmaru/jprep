@@ -37,9 +37,11 @@ class PolicyNetwork(tf.keras.Model):
         x = self.dense2(x)
 
         mean = self.pi_mean(x)
+        stdev = self.pi_sigma(x)
 
-        #stdev = self.pi_sigma(x) + 0.4
-        stdev = 0.5
+        mean = tf.clip_by_value(mean,-1.,1.)
+        stdev = tf.clip_by_value(stdev,0.01,0.5)
+        # stdev = 0.1 #20210525
 
         return mean, stdev
 
@@ -52,6 +54,9 @@ class PolicyNetwork(tf.keras.Model):
         dist = tfp.distributions.Normal(loc=mean, scale=sigma)
 
         sampled_action = dist.sample()
+
+        # added 2021 0525
+        sampled_action = tf.clip_by_value(sampled_action,-1.,1.)
 
         assert len(sampled_action) == states.shape[0]
 

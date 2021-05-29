@@ -2,8 +2,8 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 from pathlib import Path
-import shutil
-import collections
+# import shutil
+# import collections
 
 import gym
 from gym import wrappers
@@ -13,12 +13,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
-# from env import VecEnv
 from models import PolicyNetwork, CriticNetwork
-# import util
-
-import agent
-import market
 
 from gym.envs.registration import register
 from gym import envs
@@ -37,7 +32,7 @@ CONFIG['entry_point'] = 'market:marketenv'
 if CONFIG['envid'] in gym.envs.registry.env_specs:
     del gym.envs.registry.env_specs[CONFIG['envid']]
 
-if CONFIG['envid'] not in env_ids:
+if CONFIG['envid'] not in gym.envs.registry.env_specs:
     register(
 
         id = CONFIG['envid'],

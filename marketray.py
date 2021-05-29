@@ -7,6 +7,8 @@ from scipy.stats import gamma
 import agent
 import gym
 
+from models import PolicyNetwork, CriticNetwork
+
 agenet_dict = {
     'random':agent.RandomAgent
 
@@ -84,9 +86,9 @@ class stock:
 
         # Volume
         if seed is not None:
-            v0 = gamma.rvs(100.,scale=0.01,random_state=seed)
+            v0 = gamma.rvs(1.,random_state=seed)
         else :
-            v0 = gamma.rvs(100.,scale=0.01)
+            v0 = gamma.rvs(1.)
 
         shape = np.array(
             [shape_coef[0]*(n**2)+shape_coef[1]*n+shape_coef[2] \
@@ -162,14 +164,15 @@ class investors:
 
 class marketenv(gym.Env):
 
-    def __init__(self,competitor_type:str='random',
+    def __init__(self,max_iter=10000,competitor_type:str='random',
         ninvestor:int=20, agent_config:dict = {'random_space':[-1.,1.]}
         , asset_config:dict={'mu':0.0,'sigma':0.20}
     ):
 
-        self.max_iter = 10000
+        self.max_iter = max_iter
         self.iter = 0 
         self.done = False
+        self.inventory = 0
 
         self.asset = stock(mu=asset_config['mu'],sigma=asset_config['sigma'])
         self.invstrs = investors(ninvestors=ninvestor)
@@ -177,6 +180,22 @@ class marketenv(gym.Env):
             self.competitor = agenet_dict[competitor_type](
                     agent_config['random_space']
                 )
+
+        self.trajectory = {"s":[],"a":[],"i":[],"t":[],"r":[],'state':[]}
+
+
+    def generate_initial_states(self):
+
+        bid_s = np.arange(0,20) * 1e-5
+        ask_s = np.arange(0,20) * 1e-5
+        trades = np.zeros(100)
+
+        return(
+            np.append(
+                np.append(bid_s,ask_s)
+                , trades
+            )
+        )
 
 
     def step(self,action:tuple):
@@ -186,7 +205,7 @@ class marketenv(gym.Env):
             Parameters
             __________
             action: tuple
-                (bid_spread, ask_spread,inventory)
+                (bid_spread, ask_spread)
         '''
 
         # calc reward
@@ -194,7 +213,7 @@ class marketenv(gym.Env):
         traded = [0,0]
 
         # inventory PL
-        reward[2] = action[2] * (self.asset.price - self.asset.price_old)
+        reward[2] = self.inventory * (self.asset.price - self.asset.price_old)
 
         # Spread PL
         #bid
@@ -209,17 +228,34 @@ class marketenv(gym.Env):
                 self.invstrs.buy - 1
             ] * (1.+action[1]) * self.invstrs.buy
             traded[1]=-self.invstrs.buy # investor buy agent sell
+        rew = np.array(reward).sum()
 
-        observation = {
-            'bid_s':self.asset.ref_spread_curve_bid,
-            'bid_vcum':self.asset.bid_vcum,
-            'ask_s':self.asset.ref_spread_curve_ask,
-            'ask_vcum':self.asset.ask_vcum
-        }
+
+        # log to trajectory
+        spcurve = np.append(self.asset.ref_spread_curve_bid,
+                self.asset.ref_spread_curve_ask
+            )
+        self.trajectory['s'].append(spcurve)
+        self.trajectory['t'].append(np.array(traded).sum())
+        self.trajectory['i'].append(self.inventory)
+        self.trajectory['a'].append(action)
+        self.trajectory['r'].append(rew)
+        if len(self.trajectory['t']) > 100 :
+            state = np.append(spcurve,
+                np.array(self.trajectory['t'][-100:],dtype=np.float32)
+            )
+        else:
+            state = np.append(spcurve,
+                np.append(np.zeros(100-len(self.trajectory['t'])),
+                    np.array(self.trajectory['t'],dtype=np.float32)
+                )
+            )
+        self.trajectory['state'].append(state)
 
         # update stock
+        self.inventory += np.sum(traded).sum()
         self.asset.price_drift()
-        self.asset.set_lob(lam=2.)
+        self.asset.set_lob(lam=10.)
         self.asset.convert_to_spread_curve()
 
         # update investors
@@ -233,14 +269,35 @@ class marketenv(gym.Env):
         if self.iter >= self.max_iter:
             self.done = True
 
-        return(observation,np.array(reward).sum(),self.done,
-            {'trade':sum(traded)})
+        return(state,np.array(reward).sum(),self.done,
+            {'price':self.asset.price})
 
     def reset(self):
 
         self.asset.reset()
         self.invstrs.reset()
         self.competitor.reset()
+        self.inventory = 0 
+
+        return(self.generate_initial_states())
+
+    def reset_trajectory(self):
+
+        self.trajectory = {'s':[],'a':[],'i':[],'r':[],'t':[],'state':[]}
+        self.iter_traj = 0
+
+    def get_trajectory(self):
+
+        trajectory = self.trajectory
+
+        trajectory['s'] = np.array(trajectory['s'],dtype=np.float32)
+        trajectory['a'] = np.array(trajectory['a'],dtype=np.float32)
+        trajectory['i'] = np.array(trajectory['i'],dtype=np.float32)
+        trajectory['t'] = np.array(trajectory['t'],dtype=np.float32)
+        trajectory['r'] = np.array(trajectory['r'],dtype=np.float32)
+        trajectory['state'] = np.array(trajectory['state'],dtype=np.float32)
+
+        return trajectory
 
     def render(self,mode='human',close=False):
 
@@ -249,23 +306,5 @@ class marketenv(gym.Env):
     def seed(self):
 
         print('_seed is not defined yet')
-
-# %%
-
-if __name__ == '__main__' :
-
-    s = stock()
-    p=[];sp=[];v=[]
-    for i in range(30):
-        s.price_drift()
-        s.set_lob()
-        s.convert_to_spread_curve()
-        p.append(s.price)
-        sp.append(s.ask_price[0])
-        v.append(s.ask_v[0])
-
-    pd.Series(p).plot()
-    pd.Series(sp).plot()
-
 
 # %%
