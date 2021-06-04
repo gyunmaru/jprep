@@ -51,13 +51,12 @@ class envlogger:
     OPT_ITER = 20
     BATCH_SIZE = 2048
 
-    def __init__(self,env_id,max_timesteps,action_space=2,
-        trajectory_size=256
+    def __init__(self,env_id,max_timesteps,action_space=3,
+        trajectory_size=1024
     ):
 
         self.env = gym.make(env_id)
         self.max_timesteps = max_timesteps
-        self.trajectory = {"s":[],"a":[],"t":[],"r":[],'state':[]}
 
         self.policy = PolicyNetwork(action_space=action_space)
         self.old_policy = PolicyNetwork(action_space=action_space)
@@ -66,32 +65,14 @@ class envlogger:
         self.iter_traj = 0 
         self.trajectory_size = trajectory_size
 
-        self.policy(np.atleast_2d(self.generate_initial_states()))
-        self.old_policy(np.atleast_2d(self.generate_initial_states()))
-
-
-    def generate_initial_states(self):
-
-        bid_s = np.arange(0,20) * 1e-5
-        ask_s = np.arange(0,20) * 1e-5
-        trades = np.zeros(100)
-
-        return(
-            np.append(
-                np.append(bid_s,ask_s)
-                , trades
-            )
-        )
+        self.policy(np.atleast_2d(self.env.generate_initial_states()))
+        self.old_policy(np.atleast_2d(self.env.generate_initial_states()))
 
     def reset(self):
-
         self.env.reset()
-        self.reset_trajectory()
-
 
     def reset_env(self):
         self.env.reset()
-
 
     def step(self,action):
 
@@ -121,44 +102,21 @@ class envlogger:
             ))
             return(self.trajectory['state'][-1],info['trade'])
 
-    def get_trajectory(self):
-
-        trajectory = self.trajectory
-
-        trajectory['s'] = np.array(trajectory['s'],dtype=np.float32)
-        trajectory['a'] = np.array(trajectory['a'],dtype=np.float32)
-        trajectory['t'] = np.array(trajectory['t'],dtype=np.float32)
-        trajectory['r'] = np.array(trajectory['r'],dtype=np.float32)
-        trajectory['state'] = np.array(trajectory['state'],dtype=np.float32)
-
-        return trajectory
-
-    def reset_trajectory(self):
-
-        self.trajectory = {'s':[],'a':[],'r':[],'t':[],'state':[]}
-        self.iter_traj = 0
-
     def run(self,n_updates,logdir=None):
 
-        # self.summary_writer = tf.summary.create_file_writer(str(logdir))
         history = {"epoch":[],"score":[]}
-
-        trajectories = dict()
 
         for epoch in range(n_updates):
 
-            inventory = 0 
-            self.reset_trajectory()
-            state = self.generate_initial_states()
+            self.env.reset()
+            state = self.env.generate_initial_states()
 
             for _ in range(self.trajectory_size+100):
-
                 action = self.policy.sample_action(state)
-                next_state,trade = self.step(np.append(action,inventory))
-                inventory += trade
+                next_state,reward,done,info = self.env.step(np.append(action))
                 state = next_state
 
-            trajectory = self.get_trajectory()
+            trajectory = self.env.get_trajectory()
             trajectory = self.compute_advantage(trajectory,state)
 
             vloss = self.update_critic(
@@ -168,7 +126,7 @@ class envlogger:
 
             self.update_policy(
                 trajectory['state'][100:],
-                trajectory['a'][100:,:1],
+                trajectory['a'][100:,:],
                 trajectory['advantage'][100:]
             )
 

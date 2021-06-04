@@ -9,16 +9,16 @@ import numpy as np
 
 class PolicyNetwork(tf.keras.Model):
 
-    def __init__(self, action_space, lr=0.00005):
+    def __init__(self, action_space, lr=0.00005,hidden=[128,64]):
 
         super(PolicyNetwork, self).__init__()
 
         self.action_space = action_space
 
-        self.dense1 = kl.Dense(128, activation="tanh",
+        self.dense1 = kl.Dense(hidden[0], activation="tanh",
                                kernel_initializer="Orthogonal")
 
-        self.dense2 = kl.Dense(64, activation="tanh",
+        self.dense2 = kl.Dense(hidden[1], activation="tanh",
                                kernel_initializer="Orthogonal")
 
         self.pi_mean = kl.Dense(self.action_space, activation="tanh",
@@ -39,7 +39,7 @@ class PolicyNetwork(tf.keras.Model):
         mean = self.pi_mean(x)
         stdev = self.pi_sigma(x)
 
-        mean = tf.clip_by_value(mean,-1.,1.)
+        mean = tf.clip_by_value(mean,[-1.,-1.,0.],1.)
         stdev = tf.clip_by_value(stdev,0.01,0.5)
         # stdev = 0.1 #20210525
 
@@ -56,7 +56,7 @@ class PolicyNetwork(tf.keras.Model):
         sampled_action = dist.sample()
 
         # added 2021 0525
-        sampled_action = tf.clip_by_value(sampled_action,-1.,1.)
+        sampled_action = tf.clip_by_value(sampled_action,[-1.,-1.,0.],1.)
 
         assert len(sampled_action) == states.shape[0]
 
@@ -65,13 +65,13 @@ class PolicyNetwork(tf.keras.Model):
 
 class CriticNetwork(tf.keras.Model):
 
-    def __init__(self, lr=0.0001):
+    def __init__(self, lr=0.0001,hidden=[128,64]):
 
         super(CriticNetwork, self).__init__()
 
-        self.dense1 = kl.Dense(128, activation="relu")
+        self.dense1 = kl.Dense(hidden[0], activation="relu")
 
-        self.dense2 = kl.Dense(64, activation="relu")
+        self.dense2 = kl.Dense(hidden[1], activation="relu")
 
         self.out = kl.Dense(1)
 
